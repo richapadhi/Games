@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snakes & Ladders</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;800&display=swap">
+<style>
+:root{--bg:#e6eeeb;--ink:#1d2b2a;--c1:#f8efd6;--c2:#efdfae;--card:#fffaf0;--line:#c9b98a;--accent:#1f5f5b;--shadow:#00000026;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121c1b;--ink:#eef2ee;--c1:#2a3a38;--c2:#223130;--card:#1b2827;--line:#3b4f4c;--accent:#7fd1c7;--shadow:#0008}}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Georgia,serif;display:flex;flex-direction:column;align-items:center;gap:14px;padding:16px 12px 28px;min-height:100vh}
+h1{font:800 clamp(26px,6vw,38px)/1.1 Fraunces,Georgia,serif;margin:4px 0 0;letter-spacing:-.5px}
+p.sub{margin:0;opacity:.75;font-size:15px}
+#board{width:min(94vw,66vh,580px);height:auto;border-radius:10px;box-shadow:0 6px 24px var(--shadow);background:var(--c1)}
+.num{font:600 11px Georgia,serif;fill:var(--ink);opacity:.55}
+.tok{transition:cx .14s linear,cy .14s linear;stroke:#fff;stroke-width:2.5}
+#panel{width:min(94vw,580px);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:space-between}
+#msg{flex:1 1 180px;font-size:17px;min-height:46px;display:flex;align-items:center}
+#dice{width:64px;height:64px;border-radius:12px;background:#fff;color:#1d2b2a;border:2px solid var(--line);font:800 32px Fraunces,Georgia,serif;display:grid;place-items:center}
+#dice.roll{animation:sh .45s}
+@keyframes sh{0%{transform:rotate(0)}25%{transform:rotate(-18deg)}50%{transform:rotate(14deg)}75%{transform:rotate(-8deg)}100%{transform:rotate(0)}}
+@media (prefers-reduced-motion:reduce){#dice.roll{animation:none}}
+button{font:700 16px Georgia,serif;background:var(--accent);color:var(--bg);border:0;border-radius:8px;padding:12px 20px;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.sec{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+#who{display:flex;gap:8px;flex-wrap:wrap;width:100%}
+.chip{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;border:2px solid transparent;font-size:14px}
+.chip.on{border-color:var(--ink)}
+.chip i{width:14px;height:14px;border-radius:50%;display:inline-block}
+#setup,#win{position:fixed;inset:0;background:#000a;display:grid;place-items:center;z-index:5;padding:20px}
+.box{background:var(--card);border-radius:14px;padding:26px;max-width:360px;width:100%;text-align:center;display:flex;flex-direction:column;gap:14px}
+.box h2{font:800 26px Fraunces,Georgia,serif;margin:0}
+.row{display:flex;gap:10px;justify-content:center}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<h1>Snakes & Ladders</h1>
+<p class="sub">Pass the device around. First to square 100 wins.</p>
+<svg id="board" viewBox="0 0 600 600" role="img" aria-label="Snakes and ladders board"></svg>
+<div id="panel">
+  <div id="who"></div>
+  <div id="msg">Choose players to begin.</div>
+  <div id="dice" aria-live="polite">–</div>
+  <button id="roll" disabled>Roll dice</button>
+</div>
+<button class="sec" id="again">New game</button>
+
+<div id="setup"><div class="box"><h2>How many players?</h2><div class="row"><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button></div><p style="margin:0;opacity:.7;font-size:14px">Roll a 6 and you roll again.</p></div></div>
+<div id="win" hidden><div class="box"><h2 id="wt"></h2><button id="pa">Play again</button></div></div>
+
+<script>
+const SN={16:6,47:26,49:11,56:53,62:19,64:60,87:24,93:73,95:75,98:78},LD={1:38,4:14,9:31,21:42,28:84,36:44,51:67,71:91,80:100};
+const JUMP=Object.assign({},SN,LD),COL=['#e8a317','#3b4cca','#d6336c','#2f9e6e'],OFF=[[-9,-9],[9,-9],[-9,9],[9,9]];
+const $=s=>document.querySelector(s),svg=$('#board'),NS='http://www.w3.org/2000/svg';
+const xy=n=>{const r=Math.floor((n-1)/10);let c=(n-1)%10;if(r%2)c=9-c;return[c*60+30,(9-r)*60+30]};
+const el=(t,a,p=svg)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e};
+let pos=[],turn=0,np=2,busy=false,toks=[];
+
+function draw(){
+  svg.innerHTML='';
+  for(let n=1;n<=100;n++){const[x,y]=xy(n);el('rect',{x:x-30,y:y-30,width:60,height:60,fill:((n+Math.floor((n-1)/10))%2)?'var(--c2)':'var(--c1)'});
+    const t=el('text',{x:x-26,y:y-17,class:'num'});t.textContent=n}
+  Object.entries(LD).forEach(([a,b])=>{const[x1,y1]=xy(+a),[x2,y2]=xy(b),dx=x2-x1,dy=y2-y1,l=Math.hypot(dx,dy),nx=-dy/l*9,ny=dx/l*9;
+    [1,-1].forEach(s=>el('line',{x1:x1+nx*s,y1:y1+ny*s,x2:x2+nx*s,y2:y2+ny*s,stroke:'#8a5a2b',  'stroke-width':5,'stroke-linecap':'round'}));
+    for(let d=18;d<l-8;d+=26){const px=x1+dx*d/l,py=y1+dy*d/l;el('line',{x1:px+nx,y1:py+ny,x2:px-nx,y2:py-ny,stroke:'#b8803f','stroke-width':4,'stroke-linecap':'round'})}});
+  const sc=['#c0392b','#2f8f5b','#7d3c98','#d35400','#1f7a9a'];
+  Object.entries(SN).forEach(([a,b],i)=>{const[x1,y1]=xy(+a),[x2,y2]=xy(b),dx=x2-x1,dy=y2-y1,l=Math.hypot(dx,dy),px=-dy/l*(i%2?-1:1)*42,py=dx/l*(i%2?-1:1)*42;
+    const d=`M${x1} ${y1} C${x1+dx*.25+px} ${y1+dy*.25+py} ${x1+dx*.75-px} ${y1+dy*.75-py} ${x2} ${y2}`,c=sc[i%5];
+    el('path',{d,fill:'none',stroke:c,'stroke-width':11,'stroke-linecap':'round',opacity:.92});
+    el('path',{d,fill:'none',stroke:'#ffffff80','stroke-width':3,'stroke-dasharray':'2 10','stroke-linecap':'round'});
+    el('circle',{cx:x1,cy:y1,r:11,fill:c});el('circle',{cx:x1-4,cy:y1-3,r:2.5,fill:'#fff'});el('circle',{cx:x1+4,cy:y1-3,r:2.5,fill:'#fff'});
+    el('circle',{cx:x2,cy:y2,r:4,fill:c})});
+  toks=pos.map((p,i)=>{const[x,y]=xy(Math.max(p,1));return el('circle',{class:'tok',cx:x+OFF[i][0],cy:y+OFF[i][1],r:9,fill:COL[i]})});
+}
+const place=i=>{const[x,y]=xy(Math.max(pos[i],1));toks[i].setAttribute('cx',x+OFF[i][0]);toks[i].setAttribute('cy',y+OFF[i][1])};
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+function who(){$('#who').innerHTML=pos.map((p,i)=>`<span class="chip ${i==turn?'on':''}"><i style="background:${COL[i]}"></i>Player ${i+1}: ${p||'start'}</span>`).join('')}
+function say(t){$('#msg').textContent=t}
+function start(n){np=n;pos=Array(n).fill(0);turn=0;busy=false;draw();who();say('Player 1, roll the dice.');$('#roll').disabled=false;$('#setup').hidden=true;$('#win').hidden=true}
+async function roll(){
+  if(busy)return;busy=true;$('#roll').disabled=true;
+  const d=1+Math.floor(Math.random()*6),dc=$('#dice');dc.classList.remove('roll');void dc.offsetWidth;dc.classList.add('roll');
+  for(let k=0;k<6;k++){dc.textContent=1+Math.floor(Math.random()*6);await wait(60)}dc.textContent=d;
+  const me=turn+1;let target=pos[turn]+d;
+  if(target>100){say(`Player ${me} needs an exact roll to land on 100.`);await wait(900)}
+  else{for(let s=pos[turn]+1;s<=target;s++){pos[turn]=s;place(turn);await wait(150)}
+    if(JUMP[target]){const to=JUMP[target];say(to>target?`Ladder! Player ${me} climbs to ${to}.`:`Snake! Player ${me} slides to ${to}.`);await wait(500);
+      pos[turn]=to;place(turn);await wait(450)}}
+  who();
+  if(pos[turn]===100){$('#wt').textContent=`Player ${me} wins!`;$('#win').hidden=false;return}
+  if(d!==6||target>100)turn=(turn+1)%np;else say(`Player ${me} rolled a 6 and goes again.`);
+  who();if(d!==6||target>100)say(`Player ${turn+1}, roll the dice.`);
+  busy=false;$('#roll').disabled=false;
+}
+$('#roll').onclick=roll;
+document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>start(+b.dataset.n));
+$('#again').onclick=$('#pa').onclick=()=>{$('#win').hidden=true;$('#setup').hidden=false};
+draw();
+</script>
+</body>
+</html>
