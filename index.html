@@ -34,6 +34,9 @@ button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
 .box{background:var(--card);border-radius:14px;padding:26px;max-width:360px;width:100%;text-align:center;display:flex;flex-direction:column;gap:14px}
 .box h2{font:800 26px Fraunces,Georgia,serif;margin:0}
 .row{display:flex;gap:10px;justify-content:center}
+#names{display:flex;flex-direction:column;gap:8px}#names label{display:flex;align-items:center;gap:8px}#names i{width:16px;height:16px;border-radius:50%;flex:none}
+input{flex:1;min-width:0;font:16px Georgia,serif;padding:10px;border-radius:8px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink)}
+#cnt .on{background:var(--accent);color:var(--bg)}#setup{overflow:auto}.tok{transform-box:fill-box;transform-origin:center}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -47,9 +50,9 @@ button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
   <div id="dice" aria-live="polite">–</div>
   <button id="roll" disabled>Roll dice</button>
 </div>
-<button class="sec" id="again">New game</button>
+<div class="row"><button class="sec" id="again">New game</button><button class="sec" id="mute">Sound: on</button></div>
 
-<div id="setup"><div class="box"><h2>How many players?</h2><div class="row"><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button></div><p style="margin:0;opacity:.7;font-size:14px">Roll a 6 and you roll again.</p></div></div>
+<div id="setup"><div class="box"><h2>Who’s playing?</h2><div class="row" id="cnt"><button class="sec" data-n="2">2 players</button><button class="sec" data-n="3">3</button><button class="sec" data-n="4">4</button></div><div id="names"></div><button id="go">Start game</button><p style="margin:0;opacity:.7;font-size:14px">Roll a 6 and you roll again.</p></div></div>
 <div id="win" hidden><div class="box"><h2 id="wt"></h2><button id="pa">Play again</button></div></div>
 
 <script>
@@ -58,7 +61,12 @@ const JUMP=Object.assign({},SN,LD),COL=['#e8a317','#3b4cca','#d6336c','#2f9e6e']
 const $=s=>document.querySelector(s),svg=$('#board'),NS='http://www.w3.org/2000/svg';
 const xy=n=>{const r=Math.floor((n-1)/10);let c=(n-1)%10;if(r%2)c=9-c;return[c*60+30,(9-r)*60+30]};
 const el=(t,a,p=svg)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e};
-let pos=[],turn=0,np=2,busy=false,toks=[];
+let pos=[],turn=0,np=2,busy=false,toks=[],names=[],snd=true,AC;
+const nm=i=>names[i]||`Player ${i+1}`;
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function tone(f,t=.12,type='sine',v=.15,at=0){if(!snd)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain(),s=AC.currentTime+at;o.type=type;o.frequency.setValueAtTime(f,s);g.gain.setValueAtTime(v,s);g.gain.exponentialRampToValueAtTime(.001,s+t);o.connect(g);g.connect(AC.destination);o.start(s);o.stop(s+t)}catch(e){}}
+const seq=(n,g,t='sine')=>n.forEach((f,i)=>tone(f,.16,t,.14,i*g));
+function hop(i,s){toks[i].animate([{transform:'translateY(0)'},{transform:'translateY(-18px) scale(1.2)'},{transform:'translateY(0)'}],{duration:160,easing:'ease-out'});tone(440+(s%10)*30,.07,'sine',.12)}
 
 function draw(){
   svg.innerHTML='';
@@ -78,26 +86,45 @@ function draw(){
 }
 const place=i=>{const[x,y]=xy(Math.max(pos[i],1));toks[i].setAttribute('cx',x+OFF[i][0]);toks[i].setAttribute('cy',y+OFF[i][1])};
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
-function who(){$('#who').innerHTML=pos.map((p,i)=>`<span class="chip ${i==turn?'on':''}"><i style="background:${COL[i]}"></i>Player ${i+1}: ${p||'start'}</span>`).join('')}
+async function bite(n){
+  const[x,y]=xy(n),k=turn,rm=matchMedia('(prefers-reduced-motion:reduce)').matches,fo='transform-box:fill-box;transform-origin:center';
+  tone(110,.18,'sawtooth',.28);tone(80,.25,'square',.2,.06);tone(900,.05,'square',.1);
+  const f=el('rect',{width:600,height:600,fill:'#c0392b',opacity:0,'pointer-events':'none'});
+  f.animate([{opacity:0},{opacity:.4},{opacity:0}],{duration:600}).onfinish=()=>f.remove();
+  const h=el('circle',{cx:x,cy:y,r:16,fill:'#8e1b10',style:fo});
+  h.animate([{transform:'scale(.6)'},{transform:'scale(2.2)'},{transform:'scale(1)'}],{duration:350,easing:'ease-out'}).onfinish=()=>h.remove();
+  const fg=el('path',{d:`M${x-8} ${y-16} l4 15 l4 -15 z M${x+1} ${y-16} l4 15 l4 -15 z`,fill:'#fff',stroke:'#7a1308','stroke-width':1.5});
+  fg.animate([{opacity:1},{opacity:1},{opacity:0}],{duration:700}).onfinish=()=>fg.remove();
+  const t=el('text',{x,y:y-26,'text-anchor':'middle',style:'font:800 24px Fraunces,Georgia,serif;fill:#fff;stroke:#7a1308;stroke-width:5;paint-order:stroke'});t.textContent='CHOMP!';
+  t.animate([{transform:'translateY(0)',opacity:1},{transform:'translateY(-30px)',opacity:0}],{duration:900}).onfinish=()=>t.remove();
+  if(!rm)svg.animate([{transform:'translateX(0)'},{transform:'translateX(-8px)'},{transform:'translateX(8px)'},{transform:'translateX(-6px)'},{transform:'translateX(5px)'},{transform:'translateX(0)'}],{duration:400});
+  toks[k].animate([{transform:'rotate(0) scale(1)'},{transform:'rotate(-25deg) scale(.6)'},{transform:'rotate(20deg) scale(1.2)'},{transform:'rotate(0) scale(1)'}],{duration:500});
+  await wait(650);
+}
+function who(){$('#who').innerHTML=pos.map((p,i)=>`<span class="chip ${i==turn?'on':''}"><i style="background:${COL[i]}"></i>${esc(nm(i))}: ${p||'start'}</span>`).join('')}
 function say(t){$('#msg').textContent=t}
-function start(n){np=n;pos=Array(n).fill(0);turn=0;busy=false;draw();who();say('Player 1, roll the dice.');$('#roll').disabled=false;$('#setup').hidden=true;$('#win').hidden=true}
+function start(){pos=Array(np).fill(0);names=[...document.querySelectorAll('#names input')].map((e,i)=>e.value.trim()||`Player ${i+1}`);turn=0;busy=false;draw();who();say(`${nm(0)}, roll the dice.`);$('#roll').disabled=false;$('#setup').hidden=true;$('#win').hidden=true;tone(660,.1)}
 async function roll(){
   if(busy)return;busy=true;$('#roll').disabled=true;
   const d=1+Math.floor(Math.random()*6),dc=$('#dice');dc.classList.remove('roll');void dc.offsetWidth;dc.classList.add('roll');
-  for(let k=0;k<6;k++){dc.textContent=1+Math.floor(Math.random()*6);await wait(60)}dc.textContent=d;
-  const me=turn+1;let target=pos[turn]+d;
-  if(target>100){say(`Player ${me} needs an exact roll to land on 100.`);await wait(900)}
-  else{for(let s=pos[turn]+1;s<=target;s++){pos[turn]=s;place(turn);await wait(150)}
-    if(JUMP[target]){const to=JUMP[target];say(to>target?`Ladder! Player ${me} climbs to ${to}.`:`Snake! Player ${me} slides to ${to}.`);await wait(500);
+  for(let k=0;k<6;k++){dc.textContent=1+Math.floor(Math.random()*6);tone(180+Math.random()*220,.04,'square',.05);await wait(60)}dc.textContent=d;
+  const me=nm(turn);let target=pos[turn]+d;
+  if(target>100){say(`${me} needs an exact roll to land on 100.`);await wait(900)}
+  else{for(let s=pos[turn]+1;s<=target;s++){pos[turn]=s;place(turn);hop(turn,s);await wait(170)}
+    if(JUMP[target]){const to=JUMP[target];if(to>target)seq([523,659,784,1047],.1,'triangle');else{await bite(target);seq([466,392,330,262],.1,'sawtooth')}say(to>target?`Ladder! ${me} climbs to ${to}.`:`Snake! ${me} slides to ${to}.`);await wait(500);
       pos[turn]=to;place(turn);await wait(450)}}
   who();
-  if(pos[turn]===100){$('#wt').textContent=`Player ${me} wins!`;$('#win').hidden=false;return}
-  if(d!==6||target>100)turn=(turn+1)%np;else say(`Player ${me} rolled a 6 and goes again.`);
-  who();if(d!==6||target>100)say(`Player ${turn+1}, roll the dice.`);
+  if(pos[turn]===100){$('#wt').textContent=`${me} wins!`;seq([523,659,784,1047,784,1047],.13,'triangle');$('#win').hidden=false;return}
+  if(d!==6||target>100)turn=(turn+1)%np;else say(`${me} rolled a 6 and goes again.`);
+  who();if(d!==6||target>100)say(`${nm(turn)}, roll the dice.`);
   busy=false;$('#roll').disabled=false;
 }
 $('#roll').onclick=roll;
-document.querySelectorAll('[data-n]').forEach(b=>b.onclick=()=>start(+b.dataset.n));
+function fields(n){np=n;document.querySelectorAll('#cnt button').forEach(b=>b.classList.toggle('on',+b.dataset.n===n));const old=[...document.querySelectorAll('#names input')].map(e=>e.value);$('#names').innerHTML=Array.from({length:n},(_,i)=>`<label><i style="background:${COL[i]}"></i><input maxlength="14" placeholder="Player ${i+1}" aria-label="Player ${i+1} name" value="${esc(old[i]||'')}"></label>`).join('')}
+document.querySelectorAll('#cnt button').forEach(b=>b.onclick=()=>fields(+b.dataset.n));
+$('#go').onclick=start;
+$('#mute').onclick=()=>{snd=!snd;$('#mute').textContent='Sound: '+(snd?'on':'off')};
+fields(2);
 $('#again').onclick=$('#pa').onclick=()=>{$('#win').hidden=true;$('#setup').hidden=false};
 draw();
 </script>
